@@ -17,6 +17,7 @@
 #define PHRASEMAX 128
 #define BUFBYTES 4096
 
+typedef enum result {SUCCESS=0, FAIL=-1} result;
 
 /*
 * Function: open_file
@@ -43,33 +44,44 @@ FILE *open_file(char* fname, char *mode)
 * Attempt to generate a key and nonce using the passphrase and the static salt
 * values. If there are any errors then return -1 otherwise return 0.
 */
-int generate_key_nonce(unsigned char *key, unsigned char *nonce,
-                       char *passphrase)
+result generate_key_nonce(unsigned char *key, unsigned char *nonce,
+                          char *passphrase)
 {
     char *key_salt = "wJDNGf7/Jrce41GTllX+Z4I0eHdva+IXFsYiD5Sg50M";
     char *nonce_salt = "6K9qNULNb0M61brPbbDFrA7zp8DULGb5G5tVRRpRFqk";
+    size_t r;
 
-    if (crypto_pwhash_scryptsalsa208sha256
-        (key, KEYBYTES, passphrase, strlen(passphrase),
+    r = crypto_pwhash_scryptsalsa208sha256(
+        key,
+        KEYBYTES,
+        passphrase,
+        strlen(passphrase),
         (unsigned char *)key_salt,
         crypto_pwhash_scryptsalsa208sha256_OPSLIMIT_INTERACTIVE,
-        crypto_pwhash_scryptsalsa208sha256_MEMLIMIT_INTERACTIVE) != 0)
+        crypto_pwhash_scryptsalsa208sha256_MEMLIMIT_INTERACTIVE);
+
+    if (r != 0)
     {
         fprintf(stderr, "Unable to generate key from passprase.\n");
-        return -1;
+        return FAIL;
     }
 
-    if (crypto_pwhash_scryptsalsa208sha256
-        (nonce, NONCEBYTES, passphrase, strlen(passphrase),
+    r = crypto_pwhash_scryptsalsa208sha256(
+        nonce,
+        NONCEBYTES,
+        passphrase,
+        strlen(passphrase),
         (unsigned char *)nonce_salt,
         crypto_pwhash_scryptsalsa208sha256_OPSLIMIT_INTERACTIVE,
-        crypto_pwhash_scryptsalsa208sha256_MEMLIMIT_INTERACTIVE) != 0)
+        crypto_pwhash_scryptsalsa208sha256_MEMLIMIT_INTERACTIVE);
+
+    if (r != 0)
     {
         fprintf(stderr, "Unable to generate nonce from passprase.\n");
-        return -1;
+        return FAIL;
     }
 
-    return 0;
+    return SUCCESS;
 }
 
 
@@ -79,45 +91,52 @@ int generate_key_nonce(unsigned char *key, unsigned char *nonce,
 * Encrypt a file by reading in chunks of data, encrypting those chunks, and
 * writing the encrypted chunks to a new file.
 */
-int encrypt_file(char *pfname, char *efname, unsigned char *k,
-                 unsigned char *n)
+result encrypt_file(char *pfname, char *efname, unsigned char *k,
+                    unsigned char *n)
 {
     size_t rsize;
+    size_t wsize;
+    size_t r;
     unsigned char ebuf[BUFBYTES + MACBYTES];
     unsigned char pbuf[BUFBYTES];
     FILE *pfile;
     FILE *efile;
 
-    if ((pfile = open_file(pfname, "rb")) == NULL) { return -1; }
-    if ((efile = open_file(efname, "wb")) == NULL) { fclose(pfile); return -1; }
+    pfile = open_file(pfname, "rb");
+    if (pfile == NULL) { return FAIL; }
+
+    efile = open_file(efname, "wb");
+    if (efile == NULL) { fclose(pfile); return FAIL; }
 
     // Encrypt the data in the file in chunks.
     while (feof(pfile) == 0) {
         rsize = fread(pbuf, sizeof(unsigned char), BUFBYTES, pfile);
 
-        if (crypto_secretbox_easy(ebuf, pbuf, rsize, n, k) != 0)
+        r = crypto_secretbox_easy(ebuf, pbuf, rsize, n, k);
+        if (r != 0)
         {
             fprintf(stderr, "Could not encrypt data.\n");
             fclose(pfile);
             fclose(efile);
-            return -1;
+            return FAIL;
         }
 
         // Write the encrypted bytes to a file. The encrypted bytes include
         // the MAC bytes as well.
-        if (fwrite(ebuf, sizeof(unsigned char), rsize + MACBYTES, efile) <= 0)
+        wsize = fwrite(ebuf, sizeof(unsigned char), rsize + MACBYTES, efile);
+        if (wsize <= 0)
         {
             fprintf(stderr, "Could not write encrypted data to file.\n");
             fclose(pfile);
             fclose(efile);
-            return -1;
+            return FAIL;
         }
     }
 
     fclose(pfile);
     fclose(efile);
 
-    return 0;
+    return SUCCESS;
 }
 
 
@@ -127,42 +146,49 @@ int encrypt_file(char *pfname, char *efname, unsigned char *k,
 * Decrypt a file by reading in chunks of data, decrypting those chunks, and
 * writing the decrypted chunks to a new file.
 */
-int decrypt_file(char *efname, char *pfname, unsigned char *k,
-                 unsigned char *n)
+result decrypt_file(char *efname, char *pfname, unsigned char *k,
+                   unsigned char *n)
 {
     size_t rsize;
+    size_t wsize;
+    size_t r;
     unsigned char ebuf[BUFBYTES + MACBYTES];
     unsigned char pbuf[BUFBYTES];
     FILE *pfile;
     FILE *efile;
 
-    if ((pfile = open_file(pfname, "wb")) == NULL) { return -1; }
-    if ((efile = open_file(efname, "rb")) == NULL) { fclose(pfile); return -1; }
+    pfile = open_file(pfname, "wb");
+    if (pfile == NULL) { return FAIL; }
+
+    efile = open_file(efname, "rb");
+    if (efile == NULL) { fclose(pfile); return FAIL; }
 
     while (feof(efile) == 0) {
         rsize = fread(ebuf, sizeof(unsigned char), BUFBYTES + MACBYTES, efile);
 
-        if (crypto_secretbox_open_easy(pbuf, ebuf, rsize, n, k) != 0) {
+        r = crypto_secretbox_open_easy(pbuf, ebuf, rsize, n, k);
+        if (r != 0) {
             fprintf(stderr, "Could not decrypt data.\n");
             fclose(pfile);
             fclose(efile);
-            return -1;
+            return FAIL;
         }
 
         // The decrypted bytes no longer include the MAC bytes.
-        if (fwrite(pbuf, sizeof(unsigned char), rsize - MACBYTES, pfile) <= 0)
+        wsize = fwrite(pbuf, sizeof(unsigned char), rsize - MACBYTES, pfile);
+        if (wsize <= 0)
         {
             fprintf(stderr, "Could not write decrypted data to file.\n");
             fclose(pfile);
             fclose(efile);
-            return -1;
+            return FAIL;
         }
     }
 
     fclose(pfile);
     fclose(efile);
 
-    return 0;
+    return SUCCESS;
 }
 
 
@@ -207,7 +233,10 @@ void get_passphrase(char *p)
 void get_key_material(unsigned char *key, unsigned char *nonce,
                       char *passphrase)
 {
-    if (generate_key_nonce(key, nonce, passphrase) == -1)
+    result r;
+
+    r = generate_key_nonce(key, nonce, passphrase);
+    if (r == FAIL)
     {
         fprintf(stderr, "Unable to generate key and nonce.\n");
         exit(EXIT_FAILURE);
@@ -224,18 +253,18 @@ void get_key_material(unsigned char *key, unsigned char *nonce,
 void process_file(char *command, char *infile, char *outfile,
                   unsigned char *key, unsigned char *nonce)
 {
-    int result = 0;
+    size_t r = 0;
 
     if (strcmp(command, "encrypt") == 0)
     {
-        result = encrypt_file(infile, outfile, key, nonce);
+        r = encrypt_file(infile, outfile, key, nonce);
     } else if (strcmp(command, "decrypt") == 0){
-        result = decrypt_file(infile, outfile, key, nonce);
+        r = decrypt_file(infile, outfile, key, nonce);
     } else {
         usage();
     }
 
-    if (result == 0)
+    if (r == 0)
     {
         printf("Successfully %sed file %s.\n", command, infile);
     } else {
