@@ -1,6 +1,10 @@
 /*
 * A simple program to encrypt and decrypt files with a passphrase using
 * libsodium, which is available here, http://doc.libsodium.org/index.html.
+* 
+* Note: The passphrase must be at least 20 characters long and is silently
+*       truncated at 128 characters. These values can be adjusted using the
+*       PHRASEMIN and PHRASEMAX constants.
 */
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,7 +15,8 @@
 #define NONCEBYTES crypto_secretbox_NONCEBYTES
 #define KEYBYTES crypto_secretbox_KEYBYTES
 #define HASHBYTES crypto_generichash_BYTES
-#define PHRASEBYTES 128
+#define PHRASEMIN 20
+#define PHRASEMAX 128
 #define BUFBYTES 4096
 
 
@@ -185,11 +190,11 @@ void usage()
 void get_passphrase(char *p)
 {
     printf("Enter your passphrase: ");
-    fgets(p, PHRASEBYTES, stdin);
+    fgets(p, PHRASEMAX, stdin);
 
-    if (strlen(p) < 20)
+    if (strlen(p) < PHRASEMIN)
     {
-        printf("Passphrase is too short, it must be at least 20 characters.\n");
+        printf("Passphrase must be at least %d characters.\n", PHRASEMIN);
         exit(EXIT_FAILURE);
     }
 }
@@ -251,7 +256,7 @@ int main(int argc, char *argv[])
 {
     unsigned char key[KEYBYTES] = {0};
     unsigned char nonce[NONCEBYTES] = {0};
-    char passphrase[PHRASEBYTES] = {0};
+    char passphrase[PHRASEMAX] = {0};
 
     if (argc != 4) { usage(); }
 
