@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-Wall -g
+CFLAGS=-W -Wall -std=c99 -pedantic -g
 LIB_DIR=-L/usr/local/lib
 LIBS=-lsodium
 FILE=spud
