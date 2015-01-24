@@ -6,8 +6,6 @@
 *       truncated at 128 characters. These values can be adjusted using the
 *       PHRASEMIN and PHRASEMAX constants.
 */
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <sodium.h>
 
@@ -32,7 +30,7 @@ FILE *open_file(char* fname, char *mode)
 
     if (fp == NULL)
     {
-        fprintf(stderr, "Could not open file %s.", fname);
+        fprintf(stderr, "Could not open file %s.\n", fname);
     }
 
     return fp;
