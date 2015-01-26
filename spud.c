@@ -5,6 +5,10 @@
 * Note: The passphrase must be at least 20 characters long and is silently
 *       truncated at 128 characters. These values can be adjusted using the
 *       PHRASEMIN and PHRASEMAX constants.
+*
+*  Todo:
+*    - Create random salt for user and store in ENV?
+*    - Allow user to input recipient email address and derive salt from it.
 */
 #include <string.h>
 #include <sodium.h>
@@ -49,7 +53,6 @@ result
 generate_key_nonce(unsigned char *key, unsigned char *nonce, char *passphrase)
 {
     char *key_salt = "wJDNGf7/Jrce41GTllX+Z4I0eHdva+IXFsYiD5Sg50M";
-    char *nonce_salt = "6K9qNULNb0M61brPbbDFrA7zp8DULGb5G5tVRRpRFqk";
     size_t r;
 
     r = crypto_pwhash_scryptsalsa208sha256(
@@ -67,20 +70,7 @@ generate_key_nonce(unsigned char *key, unsigned char *nonce, char *passphrase)
         return FAIL;
     }
 
-    r = crypto_pwhash_scryptsalsa208sha256(
-        nonce,
-        NONCEBYTES,
-        passphrase,
-        strlen(passphrase),
-        (unsigned char *)nonce_salt,
-        crypto_pwhash_scryptsalsa208sha256_OPSLIMIT_INTERACTIVE,
-        crypto_pwhash_scryptsalsa208sha256_MEMLIMIT_INTERACTIVE);
-
-    if (r != 0)
-    {
-        fprintf(stderr, "Unable to generate nonce from passprase.\n");
-        return FAIL;
-    }
+    randombytes_buf(nonce, NONCEBYTES);
 
     return SUCCESS;
 }
@@ -108,6 +98,16 @@ encrypt_file(char *pfname, char *efname, unsigned char *k, unsigned char *n)
 
     efile = open_file(efname, "wb");
     if (efile == NULL) { fclose(pfile); return FAIL; }
+
+    // Write the nonce to the beginning of the file.
+    wsize = fwrite(n, sizeof(char), NONCEBYTES, efile);
+    if (wsize != NONCEBYTES)
+    {
+        fprintf(stderr, "Could not write nonce data to file.\n");
+        fclose(pfile);
+        fclose(efile);
+        return FAIL;
+    }
 
     // Encrypt the data in the file in chunks.
     while (feof(pfile) == 0)
@@ -149,13 +149,14 @@ encrypt_file(char *pfname, char *efname, unsigned char *k, unsigned char *n)
 * writing the decrypted chunks to a new file.
 */
 result
-decrypt_file(char *efname, char *pfname, unsigned char *k, unsigned char *n)
+decrypt_file(char *efname, char *pfname, unsigned char *k)
 {
     size_t rsize;
     size_t wsize;
     size_t r;
     unsigned char ebuf[BUFBYTES + MACBYTES];
     unsigned char pbuf[BUFBYTES];
+    unsigned char n[NONCEBYTES];
     FILE *pfile;
     FILE *efile;
 
@@ -165,6 +166,17 @@ decrypt_file(char *efname, char *pfname, unsigned char *k, unsigned char *n)
     efile = open_file(efname, "rb");
     if (efile == NULL) { fclose(pfile); return FAIL; }
 
+    // Read the nonce from the file.
+    rsize = fread(n, sizeof(char), NONCEBYTES, efile);
+    if (rsize != NONCEBYTES)
+    {
+        fprintf(stderr, "Could not read nonce from file.\n");
+        fclose(pfile);
+        fclose(efile);
+        return FAIL;
+    }
+
+    // Decrypt the data in the file in chunks.
     while (feof(efile) == 0)
     {
         rsize = fread(ebuf, sizeof(char), BUFBYTES + MACBYTES, efile);
@@ -268,7 +280,7 @@ process_file(char *command, char *infile, char *outfile, unsigned char *key,
     }
     else if (strcmp(command, "decrypt") == 0)
     {
-        r = decrypt_file(infile, outfile, key, nonce);
+        r = decrypt_file(infile, outfile, key);
     }
     else
     {
