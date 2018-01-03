@@ -17,12 +17,12 @@ import (
 	"crypto/cipher"
 	"flag"
 	"fmt"
-    "io/ioutil"
+	"io/ioutil"
 	"os"
-    "syscall"
+	"syscall"
 
-    "golang.org/x/crypto/ssh/terminal"
 	"golang.org/x/crypto/argon2"
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 // Minimum password length.
@@ -32,10 +32,9 @@ const passLen = 16
 // head -c 32 /dev/urandom | base64
 const salt = "AKatmtgdkMKq5SFYLt8tBlUxuwLccdCjFfFNi2b3o9A"
 
-
 // The Cryptor struct manages the encryption and decryption of data.
 type Cryptor struct {
-	Aead cipher.AEAD
+	Aead  cipher.AEAD
 	Nonce []byte
 }
 
@@ -65,7 +64,7 @@ func NewCryptor(passphrase string) (*Cryptor, error) {
 		return c, err
 	}
 
-    c.Aead = aead
+	c.Aead = aead
 
 	return c, nil
 }
@@ -93,14 +92,14 @@ func getEncPass() string {
 // Use x/crypto/ssh/terminal to get the user password without echoing to the
 // screen.
 func getPass(prompt string) string {
-    fmt.Print(prompt)
-    pass, err := terminal.ReadPassword(int(syscall.Stdin))
-    if err != nil {
-        fmt.Println("\nCould not read password.")
+	fmt.Print(prompt)
+	pass, err := terminal.ReadPassword(int(syscall.Stdin))
+	if err != nil {
+		fmt.Println("\nCould not read password.")
 		os.Exit(0)
 	}
 
-    fmt.Println("")
+	fmt.Println("")
 
 	return string(pass)
 }
@@ -111,10 +110,10 @@ func save(name string, data []byte) {
 }
 
 func check(e error) {
-    if e != nil {
-        fmt.Printf("Error: %s\n", e.Error())
-        os.Exit(0)
-    }
+	if e != nil {
+		fmt.Printf("Error: %s\n", e.Error())
+		os.Exit(0)
+	}
 }
 
 func main() {
