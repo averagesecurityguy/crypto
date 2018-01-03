@@ -1,3 +1,15 @@
+// Crypt.go is a file encryption/decryption utility that uses AES-GCM to
+// encrypt a file. The AES key is derived from a user provided passphrase using
+// Argon2.
+//
+// Usage of crypt:
+//   -a string
+//     	Action to perform. (default "encrypt")
+//   -i string
+//     	Input file.
+//   -o string
+//     	Output file.
+
 package main
 
 import (
